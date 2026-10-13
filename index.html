@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>買う物リスト</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --sub: #687083; --line: #e3e6ec;
+    --accent: #2f6fde; --accent-text: #ffffff; --step1: #f2994a; --ok: #1f9d55; --ok-bg: #e5f6ec; --warn-bg: #fff4cc; --danger: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --card: #1e232b; --text: #e8ebf0; --sub: #9aa3b2; --line: #2e3540;
+      --accent: #5b8ff0; --step1: #f2a35f; --ok: #3ccf7d; --ok-bg: #173226; --warn-bg: #3a3218; --danger: #ef6b5b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; -webkit-text-size-adjust: 100%; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding: 10px 16px calc(8px) ; padding-top: max(10px, env(safe-area-inset-top)); }
+  .bar { display: flex; align-items: center; gap: 8px; }
+  h1 { font-size: 18px; margin: 0; flex: 1; }
+  .dev { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
+  .icon { border: 0; background: transparent; color: var(--text); font-size: 20px; padding: 4px 6px; }
+  .note { font-size: 12.5px; color: var(--sub); margin: 6px 0 0; }
+  main { padding: 12px 16px 40px; max-width: 720px; margin: 0 auto; }
+  .msg { padding: 12px 14px; border-radius: 10px; background: var(--warn-bg); margin-bottom: 12px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .card.done { opacity: .6; }
+  .name { font-weight: 600; font-size: 15px; word-break: break-all; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--sub); font-size: 13px; margin: 4px 0 8px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .profit { color: var(--ok); }
+  .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn { display: block; text-align: center; text-decoration: none; border: 0; border-radius: 10px; padding: 11px 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .b1 { background: var(--step1); color: #fff; }
+  .b2 { background: var(--accent); color: var(--accent-text); }
+  .b1.used { box-shadow: inset 0 0 0 3px rgba(0,0,0,.25); }
+  .btn[aria-disabled="true"] { opacity: .35; pointer-events: none; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .mine { flex: 1; display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 14.5px; text-align: left; }
+  .mine.on { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+  .small { border: 1px solid var(--line); background: transparent; color: var(--sub); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+  .small.del { color: var(--danger); }
+  .who { font-size: 12.5px; color: var(--sub); margin-top: 6px; }
+  .empty { text-align: center; color: var(--sub); padding: 40px 0; }
+  .memo { font-size: 13px; background: var(--warn-bg); border-radius: 8px; padding: 4px 8px; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>🛒 買う物リスト</h1>
+    <button class="dev" id="dev" type="button">端末：未設定</button>
+    <button class="icon" id="reload" type="button" aria-label="読み直す">↻</button>
+  </div>
+  <p class="note">注文ごとに ①ポイントサイト経由 → ②商品を開く の順で、同じブラウザで買う（アプリでは開かない）。</p>
+</header>
+<main id="main"><div class="empty">読み込み中…</div></main>
+<script>
+(() => {
+  // 合言葉と送り先は URL の # のあと（#u=…&k=…）で一度だけ渡し、この端末に覚える。ページの中には書かない。
+  const LS = { url: 'buylist.url', key: 'buylist.key', dev: 'buylist.device', used: 'buylist.step1' };
+  const store = {
+    get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get('k') && hash.get('u')) {
+    store.set(LS.key, hash.get('k'));
+    store.set(LS.url, 'https://script.google.com/macros/s/' + hash.get('u').replace(/[^\w-]/g, '') + '/exec');
+    history.replaceState(null, '', location.pathname); // 合言葉をアドレス欄に残さない
+  }
+  const API = store.get(LS.url), KEY = store.get(LS.key);
+  const $main = document.getElementById('main'), $dev = document.getElementById('dev');
+  let device = store.get(LS.dev), items = [], pointUrl = '';
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const yen = n => n ? Number(n).toLocaleString('ja-JP') + '円' : '';
+  const message = html => { $main.innerHTML = '<div class="msg">' + html + '</div>'; };
+
+  async function call(body, tries = 4) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        // Content-Type を付けない（text/plain の単純な送信＝事前確認の通信が起きない）
+        const res = await fetch(API, { method: 'POST', body: JSON.stringify(Object.assign({ key: KEY }, body)), redirect: 'follow' });
+        const data = await res.json();
+        if (data.ok === false && data.error === 'busy' && i < tries - 1) throw new Error('busy');
+        return data;
+      } catch (e) {
+        if (i === tries - 1) throw e;
+        await new Promise(r => setTimeout(r, 800 * (i + 1)));
+      }
+    }
+  }
+
+  function step1Used(id) {
+    try { const m = JSON.parse(store.get(LS.used) || '{}'); return m[id] && Date.now() - m[id] < 3 * 3600e3; } catch (e) { return false; }
+  }
+  function markStep1(id) {
+    let m = {};
+    try { m = JSON.parse(store.get(LS.used) || '{}'); } catch (e) {}
+    m[id] = Date.now();
+    store.set(LS.used, JSON.stringify(m));
+  }
+
+  function render() {
+    $dev.textContent = '端末：' + (device || '未設定');
+    if (!items.length) { $main.innerHTML = '<div class="empty">リストは空です</div>'; return; }
+    $main.innerHTML = items.map((it, i) => {
+      const mine = device && it.bought.includes(device);
+      const count = it.bought.length + (it.target ? '/' + it.target : '') + '台';
+      return '<div class="card' + (mine ? ' done' : '') + '" data-id="' + esc(it.id) + '">' +
+        '<div class="name">' + esc(it.name || '(名前なし)') + '</div>' +
+        '<div class="meta">' + (it.price ? '<span><b>' + yen(it.price) + '</b></span>' : '') +
+        (it.profit !== null && it.profit !== undefined ? '<span class="profit">利益 ' + (it.profit >= 0 ? '+' : '') + Number(it.profit).toLocaleString('ja-JP') + '円</span>' : '') +
+        (it.store ? '<span>' + esc(it.store) + '</span>' : '') + '<span>入れた ' + esc(it.added) + '</span></div>' +
+        (it.memo ? '<div class="memo">' + esc(it.memo) + '</div>' : '') +
+        '<div class="steps">' +
+        '<a class="btn b1' + (step1Used(it.id) ? ' used' : '') + '" data-act="step1" href="' + esc(pointUrl || '#') + '" target="_blank" rel="noopener noreferrer"' + (pointUrl ? '' : ' aria-disabled="true"') + '>① ポイントサイト</a>' +
+        '<a class="btn b2" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer">② 商品を開く</a>' +
+        '</div>' +
+        '<div class="row">' +
+        '<button class="mine' + (mine ? ' on' : '') + '" data-act="mark" type="button">' + (mine ? '✓ この端末で買った' : '□ この端末で買った') + '</button>' +
+        '<button class="small" data-act="up" type="button"' + (i === 0 ? ' disabled' : '') + ' aria-label="上へ">↑</button>' +
+        '<button class="small del" data-act="del" type="button" aria-label="消す">消す</button>' +
+        '</div>' +
+        '<div class="who">買った端末 ' + count + (it.bought.length ? '：' + esc(it.bought.join(', ')) : '') + '</div>' +
+        '</div>';
+    }).join('') + (pointUrl ? '' : '<div class="msg">① のボタンを使うには、シート「買う物リスト」の B2 にポイントインカムの入口URLを貼ってください。</div>');
+  }
+
+  async function load() {
+    if (!API || !KEY) { message('合言葉付きのURLで一度開いてください。'); return; }
+    try {
+      const data = await call({ kind: 'buy_list' });
+      if (!data.ok) { message(data.error === 'invalid key' ? '合言葉が違います。合言葉付きのURLで開き直してください。' : '読み込めませんでした：' + esc(data.error)); return; }
+      items = data.items || [];
+      pointUrl = /^https:\/\//.test(data.point_site_url || '') ? data.point_site_url : '';
+      render();
+    } catch (e) {
+      message('読み込めませんでした（電波を確かめて ↻ を押してください）');
+    }
+  }
+
+  function askDevice() {
+    const v = prompt('この端末の名前（例：TT05）。どの端末で買ったかの印に使います。', device || '');
+    if (v === null) return false;
+    device = v.trim().slice(0, 20);
+    store.set(LS.dev, device);
+    render();
+    return !!device;
+  }
+
+  $dev.addEventListener('click', askDevice);
+  document.getElementById('reload').addEventListener('click', load);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
+
+  $main.addEventListener('click', async ev => {
+    const el = ev.target.closest('[data-act]');
+    if (!el) return;
+    const card = el.closest('.card');
+    const id = card && card.dataset.id;
+    const it = items.find(x => x.id === id);
+    if (!it) return;
+    const act = el.dataset.act;
+    if (act === 'step1') { markStep1(id); el.classList.add('used'); return; } // リンクはそのまま開く
+    ev.preventDefault();
+    el.disabled = true;
+    try {
+      if (act === 'mark') {
+        if (!device && !askDevice()) return;
+        const on = !it.bought.includes(device);
+        const r = await call({ kind: 'buy_mark', id, device, on });
+        if (r.ok) it.bought = r.bought;
+      } else if (act === 'del') {
+        if (!confirm('「' + (it.name || '').slice(0, 40) + '」をリストから消します（全端末から消えます）。')) return;
+        const r = await call({ kind: 'buy_remove', id });
+        if (r.ok) items = items.filter(x => x.id !== id);
+      } else if (act === 'up') {
+        const i = items.indexOf(it);
+        if (i > 0) { items.splice(i, 1); items.splice(i - 1, 0, it); }
+        render();
+        await call({ kind: 'buy_order', ids: items.map(x => x.id) });
+      }
+      render();
+    } catch (e) {
+      alert('送れませんでした。電波を確かめて、もう一度押してください。');
+    } finally {
+      el.disabled = false;
+    }
+  });
+
+  if (!device && API && KEY) setTimeout(askDevice, 300);
+  load();
+})();
+</script>
+</body>
+</html>
