@@ -72,6 +72,9 @@
   if (hash.get('k') && hash.get('u')) {
     store.set(LS.key, hash.get('k'));
     store.set(LS.url, 'https://script.google.com/macros/s/' + hash.get('u').replace(/[^\w-]/g, '') + '/exec');
+    // スマホ資産アプリのボタンから開くと &d=TT01 が付く（サーバーの Device シートの番号が正しいので上書きする）
+    const d = (hash.get('d') || '').trim().slice(0, 20);
+    if (d) store.set(LS.dev, d);
     history.replaceState(null, '', location.pathname); // 合言葉をアドレス欄に残さない
   }
   const API = store.get(LS.url), KEY = store.get(LS.key);
